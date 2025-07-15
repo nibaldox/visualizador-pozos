@@ -2,6 +2,7 @@ import streamlit as st
 from data_loader import cargar_datos, procesar_datos, convertir_coordenadas
 import pandas as pd
 from typing import Optional
+import numpy as np
 
 # =============================
 # Configuración de la aplicación
@@ -187,22 +188,28 @@ if archivo is not None:
     st.plotly_chart(fig, use_container_width=True)
 
     # =============================
-    # Gráfico de factor de carga
+    # Sección Geotecnia: Métricas para estabilidad de taludes
     # =============================
+    st.header("Análisis Geotécnico para Estabilidad de Taludes")
+
+    # 1. Uniformidad del factor de carga (kg/m)
     if "factor_carga" in df_procesado.columns:
-        st.subheader("Mapa de calor de factor de carga (kg/m)")
-        # Forzar tipo float y eliminar nulos/infs
+        st.subheader("Uniformidad del factor de carga (kg/m)")
         df_factor = df_procesado.copy()
         df_factor["factor_carga"] = pd.to_numeric(df_factor["factor_carga"], errors="coerce")
         df_factor = df_factor[df_factor["factor_carga"].notnull() & df_factor["factor_carga"].apply(lambda x: x != float('inf') and x != float('-inf'))]
         if not df_factor.empty:
+            # Estadísticos
+            st.markdown("**Estadísticos del factor de carga:**")
+            st.write(df_factor["factor_carga"].describe()[["mean","std","min","max"]].rename({"mean":"Media","std":"Desv.Est.","min":"Mínimo","max":"Máximo"}))
+            st.markdown("- Un bajo desvío estándar indica buena uniformidad de carga, importante para evitar sobre-excavación o zonas débiles en el talud.")
+            # Mapa de calor
             df_factor = preparar_columnas_aux(df_factor)
             campos_hover_factor, etiquetas_factor = obtener_hover(df_factor)
             custom_data_factor = campos_hover_factor
             hovertemplate_factor = "<br>".join([
                 f"{etiquetas_factor[campo]}: <b>%{{customdata[{i}]}}</b>" for i, campo in enumerate(campos_hover_factor)
             ]) + "<extra></extra>"
-
             fig_factor = px.scatter(
                 df_factor,
                 x="este",
@@ -220,6 +227,104 @@ if archivo is not None:
         else:
             st.info("No hay datos válidos de factor de carga para graficar.")
 
+    # 2. Longitud real vs teórica de pozos
+    if "longitud_real" in df_procesado.columns and "longitud_teo" in df_procesado.columns:
+        st.subheader("Control de longitud real vs teórica de pozos")
+        df_long = df_procesado[["numero","longitud_real","longitud_teo","este","norte"]].copy()
+        df_long = df_long[df_long["longitud_real"].notnull() & df_long["longitud_teo"].notnull()]
+        df_long = preparar_columnas_aux(df_long)
+        # Cálculo de desviación relativa (%)
+        df_long["desviacion_%"] = 100 * (df_long["longitud_real"] - df_long["longitud_teo"]) / df_long["longitud_teo"]
+        # Estadísticos
+        st.markdown("**Estadísticos de longitud real:**")
+        st.write(df_long["longitud_real"].describe()[["mean","std","min","max"]].rename({"mean":"Media","std":"Desv.Est.","min":"Mínimo","max":"Máximo"}))
+        st.markdown("**Desviación estándar de longitud real:** " + f"{df_long['longitud_real'].std():.2f} m")
+        # Clasificación de pozos
+        df_long["clasificacion"] = "Dentro de tolerancia"
+        df_long.loc[df_long["desviacion_%"] < -5, "clasificacion"] = "Sub-perforado (<-5%)"
+        df_long.loc[df_long["desviacion_%"] > 5, "clasificacion"] = "Sobre-perforado (>+5%)"
+        total_pozos = len(df_long)
+        n_sub = (df_long["clasificacion"] == "Sub-perforado (<-5%)").sum()
+        n_sobre = (df_long["clasificacion"] == "Sobre-perforado (>+5%)").sum()
+        st.markdown(f"- **% Sub-perforados:** {100*n_sub/total_pozos:.1f}%  ")
+        st.markdown(f"- **% Sobre-perforados:** {100*n_sobre/total_pozos:.1f}%  ")
+        # Visualización
+        fig_long = px.scatter(
+            df_long,
+            x="este",
+            y="norte",
+            color="clasificacion",
+            custom_data=["numero","longitud_real","longitud_teo","desviacion_%","clasificacion"],
+            title="Distribución espacial de pozos según desviación de longitud",
+            labels={"este": "Este (X)", "norte": "Norte (Y)", "clasificacion": "Clasificación"}
+        )
+        fig_long.update_traces(hovertemplate="Pozo: <b>%{customdata[0]}</b><br>Long. real: <b>%{customdata[1]} m</b><br>Long. teórica: <b>%{customdata[2]} m</b><br>Desviación: <b>%{customdata[3]:.2f}%</b><br>Estado: <b>%{customdata[4]}</b><extra></extra>")
+        st.plotly_chart(fig_long, use_container_width=True)
+
+    # 6. Variabilidad de diámetro de pozos
+    if "diametro" in df_procesado.columns:
+        st.subheader("Variabilidad de diámetro de pozos")
+        df_var = df_procesado[["numero","este","norte","diametro"]].copy()
+        df_var = preparar_columnas_aux(df_var)
+        st.markdown("**Estadísticos de diámetro:**")
+        st.write(df_var["diametro"].describe()[["mean","std","min","max"]].rename({"mean":"Media","std":"Desv.Est.","min":"Mínimo","max":"Máximo"}))
+        # Definir tolerancia (ejemplo: diámetro ±3mm)
+        tolerancia_diam = 3
+        nominal = df_var["diametro"].mode()[0] if not df_var["diametro"].mode().empty else df_var["diametro"].mean()
+        df_var["diametro_fuera_tol"] = abs(df_var["diametro"] - nominal) > tolerancia_diam
+        pct_fuera = 100 * df_var["diametro_fuera_tol"].sum() / len(df_var)
+        st.markdown(f"- **% pozos fuera de tolerancia de diámetro (±{tolerancia_diam} mm):** {pct_fuera:.1f}%")
+        # Visualización espacial
+        fig_diam = px.scatter(
+            df_var,
+            x="este",
+            y="norte",
+            color="diametro",
+            color_continuous_scale="Blues",
+            custom_data=["numero","diametro"],
+            title="Mapa de variabilidad de diámetro de pozos",
+            labels={"este": "Este (X)", "norte": "Norte (Y)", "diametro": "Diámetro (mm)"}
+        )
+        fig_diam.update_traces(hovertemplate="Pozo: <b>%{customdata[0]}</b><br>Diámetro: <b>%{customdata[1]} mm</b><extra></extra>")
+        st.plotly_chart(fig_diam, use_container_width=True)
+
+    # 7. Carga total y específica en zonas críticas
+    if "kilos_cargados_real" in df_procesado.columns:
+        st.subheader("Carga total y específica en zonas críticas (bordes del banco)")
+        # Si hay columna de polígono, banco o zona, agrupar
+        col_zona = None
+        for c in ["holes_polygon","banco","zona"]:
+            if c in df_procesado.columns:
+                col_zona = c
+                break
+        if col_zona:
+            df_zona = df_procesado[[col_zona,"kilos_cargados_real","longitud_real","este","norte"]].copy()
+            df_zona = preparar_columnas_aux(df_zona)
+            resumen = df_zona.groupby(col_zona).agg(
+                total_kg = ("kilos_cargados_real","sum"),
+                total_long = ("longitud_real","sum"),
+                n_pozos = ("kilos_cargados_real","count")
+            )
+            resumen["kg_por_m"] = resumen["total_kg"] / resumen["total_long"].replace(0,np.nan)
+            resumen = resumen.round(2)
+            st.markdown("**Resumen por zona crítica:**")
+            st.dataframe(resumen)
+            # Visualización espacial
+            fig_zona = px.scatter(
+                df_zona,
+                x="este",
+                y="norte",
+                color=col_zona,
+                size="kilos_cargados_real",
+                custom_data=[col_zona,"kilos_cargados_real"],
+                title=f"Distribución de carga de explosivo por {col_zona}",
+                labels={"este": "Este (X)", "norte": "Norte (Y)", col_zona: col_zona, "kilos_cargados_real": "Kg Explosivo"}
+            )
+            fig_zona.update_traces(hovertemplate=f"Zona: <b>%{{customdata[0]}}</b><br>Kg explosivo: <b>%{{customdata[1]}}</b><extra></extra>")
+            st.plotly_chart(fig_zona, use_container_width=True)
+        else:
+            st.info("No se encontró columna de zona crítica (polígono, banco o zona) para análisis específico.")
+
     # =============================
     # Agregar columna mes_tronadura calculada
     # =============================
@@ -232,8 +337,6 @@ if archivo is not None:
     # =============================
     # PESTAÑAS DE VISUALIZACIÓN
     # =============================
-    import plotly.graph_objects as go
-    import plotly.express as px
     tab_dashboard, tab_mapa, tab_3d = st.tabs(["Dashboard", "Mapa de calor", "3D"])
 
     with tab_dashboard:
