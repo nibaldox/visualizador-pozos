@@ -1,0 +1,15 @@
+# Entornos virtuales
+venv/
+.env/
+
+# Archivos de datos grandes
+*.xlsx
+*.csv
+
+# Configuraciones IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
