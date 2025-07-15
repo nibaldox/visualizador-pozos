@@ -203,6 +203,31 @@ if archivo is not None:
             st.markdown("**Estadísticos del factor de carga:**")
             st.write(df_factor["factor_carga"].describe()[["mean","std","min","max"]].rename({"mean":"Media","std":"Desv.Est.","min":"Mínimo","max":"Máximo"}))
             st.markdown("- Un bajo desvío estándar indica buena uniformidad de carga, importante para evitar sobre-excavación o zonas débiles en el talud.")
+            # Scatter espacial: distribución del factor de carga (mapa de calor)
+            st.markdown("**Distribución espacial del factor de carga (kg/m):**")
+            df_factor = preparar_columnas_aux(df_factor)
+            campos_hover_factor, etiquetas_factor = obtener_hover(df_factor)
+            custom_data_factor = campos_hover_factor
+            hovertemplate_factor = "<br>".join([
+                f"{etiquetas_factor[campo]}: <b>%{{customdata[{i}]}}</b>" for i, campo in enumerate(campos_hover_factor)
+            ]) + "<extra></extra>"
+            fig_factor = px.scatter(
+                df_factor,
+                x="este",
+                y="norte",
+                color="factor_carga",
+                size="factor_carga",
+                size_max=15,
+                color_continuous_scale="RdYlGn_r",
+                custom_data=custom_data_factor,
+                title="Mapa de calor espacial del factor de carga (kg/m)",
+                labels={"este": "Este (X)", "norte": "Norte (Y)", "factor_carga": "Factor de carga (kg/m)"}
+            )
+            fig_factor.update_traces(hovertemplate=hovertemplate_factor)
+            st.plotly_chart(fig_factor, use_container_width=True)
+            st.markdown("- Este gráfico muestra la variación espacial del factor de carga en el área de tronadura, permitiendo detectar zonas con sobrecarga o subcarga.")
+            if df_factor["factor_carga"].nunique() <= 1:
+                st.info("Todos los pozos tienen el mismo factor de carga. El color será uniforme.")
             # Mapa de calor
             df_factor = preparar_columnas_aux(df_factor)
             campos_hover_factor, etiquetas_factor = obtener_hover(df_factor)
