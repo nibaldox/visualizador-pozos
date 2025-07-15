@@ -1,15 +1,53 @@
-# Entornos virtuales
+# =====================================
+# .gitignore para proyectos Python/Streamlit
+# =====================================
+
+# Entornos virtuales y archivos de entorno
 venv/
 .env/
+.venv/
+ENV/
 
-# Archivos de datos grandes
-*.xlsx
-*.csv
+# Archivos de configuración locales
+*.env
+*.local
 
 # Configuraciones IDE
 .vscode/
 .idea/
 
-# Python
+# Archivos de caché y compilados
 __pycache__/
 *.pyc
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+
+# Archivos de datos grandes y sensibles
+*.xlsx
+*.csv
+*.sqlite3
+*.db
+
+# Archivos temporales y de logs
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Archivos de sistema
+Thumbs.db
+Desktop.ini
+
+# Archivos de Streamlit
+.streamlit/config.toml
+.streamlit/secrets.toml
+
+# Archivos de Jupyter y notebooks
+*.ipynb_checkpoints
+
+# =====================================
+# FIN DEL .gitignore
+# =====================================
