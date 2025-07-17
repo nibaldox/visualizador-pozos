@@ -1,5 +1,5 @@
 import streamlit as st
-from data_loader import cargar_datos, procesar_datos, convertir_coordenadas
+from data_loader import cargar_datos, procesar_datos
 import pandas as pd
 from typing import Optional
 import numpy as np
