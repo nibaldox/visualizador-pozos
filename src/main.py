@@ -3,6 +3,7 @@ from data_loader import cargar_datos, procesar_datos
 import pandas as pd
 from typing import Optional
 import numpy as np
+from datetime import timedelta
 
 # =============================
 # Configuración de la aplicación
@@ -52,9 +53,14 @@ if archivo is not None:
         if not fechas_validas.empty:
             min_fecha = fechas_validas.min()
             max_fecha = fechas_validas.max()
+            if min_fecha != max_fecha:
+                limite_inferior = max(min_fecha, max_fecha - timedelta(days=30))
+                rango_defecto = (limite_inferior, max_fecha)
+            else:
+                rango_defecto = min_fecha
             rango_fecha = st.sidebar.date_input(
                 "Filtrar por fecha de tronadura (selecciona una o un rango)",
-                value=(min_fecha, max_fecha) if min_fecha != max_fecha else min_fecha,
+                value=rango_defecto,
                 min_value=min_fecha,
                 max_value=max_fecha
             )
@@ -62,6 +68,7 @@ if archivo is not None:
                 df_procesado = df_procesado[(df_procesado["fecha_tronadura"].dt.date >= rango_fecha[0]) & (df_procesado["fecha_tronadura"].dt.date <= rango_fecha[1])]
             elif isinstance(rango_fecha, (str, pd.Timestamp)) or rango_fecha:
                 df_procesado = df_procesado[df_procesado["fecha_tronadura"].dt.date == rango_fecha]
+            st.sidebar.caption("Se muestran por defecto los últimos 30 días de datos disponibles.")
 
     # Filtros multiselección para todas las columnas (excepto coordenadas y fecha)
     for col in columnas_filtrables:
