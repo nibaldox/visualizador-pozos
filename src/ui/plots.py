@@ -20,7 +20,7 @@ def pulgadas_a_mixto(valor) -> str:
         return ""
 
     entero = int(valor_float)
-    fraccion = max(valor_float - entero, 0)
+    fraccion = valor_float - entero
 
     if fraccion == 0:
         return f"{entero}" if entero != 0 else "0"
