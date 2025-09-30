@@ -3,6 +3,7 @@ from data_loader import cargar_datos, procesar_datos
 import pandas as pd
 from typing import Optional
 import numpy as np
+from datetime import timedelta
 
 # =============================
 # Configuración de la aplicación
@@ -52,9 +53,14 @@ if archivo is not None:
         if not fechas_validas.empty:
             min_fecha = fechas_validas.min()
             max_fecha = fechas_validas.max()
+            if min_fecha != max_fecha:
+                limite_inferior = max(min_fecha, max_fecha - timedelta(days=30))
+                rango_defecto = (limite_inferior, max_fecha)
+            else:
+                rango_defecto = min_fecha
             rango_fecha = st.sidebar.date_input(
                 "Filtrar por fecha de tronadura (selecciona una o un rango)",
-                value=(min_fecha, max_fecha) if min_fecha != max_fecha else min_fecha,
+                value=rango_defecto,
                 min_value=min_fecha,
                 max_value=max_fecha
             )
@@ -62,6 +68,7 @@ if archivo is not None:
                 df_procesado = df_procesado[(df_procesado["fecha_tronadura"].dt.date >= rango_fecha[0]) & (df_procesado["fecha_tronadura"].dt.date <= rango_fecha[1])]
             elif isinstance(rango_fecha, (str, pd.Timestamp)) or rango_fecha:
                 df_procesado = df_procesado[df_procesado["fecha_tronadura"].dt.date == rango_fecha]
+            st.sidebar.caption("Se muestran por defecto los últimos 30 días de datos disponibles.")
 
     # Filtros multiselección para todas las columnas (excepto coordenadas y fecha)
     for col in columnas_filtrables:
@@ -76,8 +83,9 @@ if archivo is not None:
     # =============================
     if "kilos_cargados_real" in df_procesado.columns and "longitud_real" in df_procesado.columns:
         df_procesado["factor_carga"] = df_procesado["kilos_cargados_real"] / df_procesado["longitud_real"]
-    else:
-        df_procesado["factor_carga"] = None
+        df_procesado["factor_carga"].replace([np.inf, -np.inf], np.nan, inplace=True)
+    elif "factor_carga" in df_procesado.columns:
+        df_procesado["factor_carga"] = pd.to_numeric(df_procesado["factor_carga"], errors="coerce")
 
     st.markdown("""
     **Factor de carga (kg/m):**
@@ -101,22 +109,58 @@ if archivo is not None:
     # Definir las columnas informativas para el hover
     # Preparar columna de diámetro en pulgadas para el hover
     from fractions import Fraction
+
     def pulgadas_a_mixto(valor):
-        entero = int(valor)
-        fraccion = valor - entero
+        if pd.isna(valor):
+            return ""
+        try:
+            valor_float = float(valor)
+        except (TypeError, ValueError):
+            return ""
+        entero = int(valor_float)
+        fraccion = round(valor_float - entero, 6)
+        if fraccion < 0:
+            fraccion = 0
         fraccion_str = ""
         if fraccion > 0:
             frac = Fraction(fraccion).limit_denominator(16)
             if frac.numerator != 0:
                 fraccion_str = f" {frac.numerator}/{frac.denominator}"
-        return f"{entero}{fraccion_str}" if fraccion_str else f"{entero}"
+        return f"{entero}{fraccion_str}" if fraccion_str or fraccion == 0 else f"{valor_float:.2f}"
 
-    if "diametro" in df_vista.columns:
-        df_vista["diametro_pulgadas"] = df_vista["diametro"] / 25.4
-        df_vista["diametro_pulgadas_str"] = df_vista["diametro_pulgadas"].apply(pulgadas_a_mixto)
-    # Formatear fecha para hover
-    if "fecha_tronadura" in df_vista.columns:
-        df_vista["fecha_tronadura_str"] = df_vista["fecha_tronadura"].dt.strftime("%d-%m-%Y")
+    def agregar_diametro_pulgadas(df: pd.DataFrame) -> pd.DataFrame:
+        if "diametro" not in df.columns:
+            return df
+        df = df.copy()
+        df["diametro"] = pd.to_numeric(df["diametro"], errors="coerce")
+        df["diametro_pulgadas"] = df["diametro"] / 25.4
+        df["diametro_pulgadas_str"] = df["diametro_pulgadas"].apply(pulgadas_a_mixto)
+        return df
+
+    def preparar_columnas_aux(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df = agregar_diametro_pulgadas(df)
+        # Redondear todos los campos numéricos a 2 decimales
+        for col in df.select_dtypes(include=[float, int]).columns:
+            df[col] = df[col].round(2)
+        if "fecha_tronadura" in df.columns and "fecha_tronadura_str" not in df.columns:
+            df["fecha_tronadura_str"] = df["fecha_tronadura"].dt.strftime("%d-%m-%Y")
+        return df
+
+    def aplicar_estilo_figura(fig, scatter_xy: bool = False, is_3d: bool = False):
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        if scatter_xy:
+            fig.update_xaxes(showgrid=False, zeroline=False)
+            fig.update_yaxes(showgrid=False, zeroline=False, scaleanchor="x", scaleratio=1)
+        if is_3d:
+            fig.update_layout(
+                scene=dict(
+                    xaxis=dict(showbackground=False, showgrid=False, zeroline=False),
+                    yaxis=dict(showbackground=False, showgrid=False, zeroline=False),
+                    zaxis=dict(showbackground=False, showgrid=False, zeroline=False),
+                )
+            )
+
     # Función auxiliar para generar campos y etiquetas de hover
     def obtener_hover(df):
         campos = []
@@ -138,29 +182,6 @@ if archivo is not None:
         if "diametro_pulgadas_str" in df.columns:
             campos.append("diametro_pulgadas_str"); etiquetas["diametro_pulgadas_str"] = "Ø (pulg)"
         return campos, etiquetas
-
-    # --- Preparar columnas auxiliares para todos los dataframes usados en gráficos interactivos ---
-    def preparar_columnas_aux(df):
-        df = df.copy()
-        # Redondear todos los campos numéricos a 2 decimales
-        for col in df.select_dtypes(include=[float, int]).columns:
-            df[col] = df[col].round(2)
-        if "fecha_tronadura" in df.columns and "fecha_tronadura_str" not in df.columns:
-            df["fecha_tronadura_str"] = df["fecha_tronadura"].dt.strftime("%d-%m-%Y")
-        if "diametro" in df.columns and "diametro_pulgadas_str" not in df.columns:
-            df["diametro_pulgadas"] = df["diametro"] / 25.4
-            from fractions import Fraction
-            def pulgadas_a_mixto(valor):
-                entero = int(valor)
-                fraccion = valor - entero
-                fraccion_str = ""
-                if fraccion > 0:
-                    frac = Fraction(fraccion).limit_denominator(16)
-                    if frac.numerator != 0:
-                        fraccion_str = f" {frac.numerator}/{frac.denominator}"
-                return f"{entero}{fraccion_str}" if fraccion_str else f"{entero}"
-            df["diametro_pulgadas_str"] = df["diametro_pulgadas"].apply(pulgadas_a_mixto)
-        return df
 
     df_vista = preparar_columnas_aux(df_vista)
     campos_hover, etiquetas = obtener_hover(df_vista)
@@ -185,6 +206,7 @@ if archivo is not None:
         labels={"este": "Este (X)", "norte": "Norte (Y)", "kilos_cargados_real": "Kg Explosivo"}
     )
     fig.update_traces(hovertemplate=hovertemplate)
+    aplicar_estilo_figura(fig, scatter_xy=True)
     st.plotly_chart(fig, use_container_width=True)
 
     # =============================
@@ -224,6 +246,7 @@ if archivo is not None:
                 labels={"este": "Este (X)", "norte": "Norte (Y)", "factor_carga": "Factor de carga (kg/m)"}
             )
             fig_factor.update_traces(hovertemplate=hovertemplate_factor)
+            aplicar_estilo_figura(fig_factor, scatter_xy=True)
             st.plotly_chart(fig_factor, use_container_width=True)
             st.markdown("- Este gráfico muestra la variación espacial del factor de carga en el área de tronadura, permitiendo detectar zonas con sobrecarga o subcarga.")
             if df_factor["factor_carga"].nunique() <= 1:
@@ -246,6 +269,7 @@ if archivo is not None:
                 labels={"este": "Este (X)", "norte": "Norte (Y)", "factor_carga": "Factor de carga (kg/m)"}
             )
             fig_factor.update_traces(hovertemplate=hovertemplate_factor)
+            aplicar_estilo_figura(fig_factor, scatter_xy=True)
             st.plotly_chart(fig_factor, use_container_width=True)
             if df_factor["factor_carga"].nunique() <= 1:
                 st.info("Todos los pozos tienen el mismo factor de carga. El color será uniforme.")
@@ -284,6 +308,7 @@ if archivo is not None:
             labels={"este": "Este (X)", "norte": "Norte (Y)", "clasificacion": "Clasificación"}
         )
         fig_long.update_traces(hovertemplate="Pozo: <b>%{customdata[0]}</b><br>Long. real: <b>%{customdata[1]} m</b><br>Long. teórica: <b>%{customdata[2]} m</b><br>Desviación: <b>%{customdata[3]:.2f}%</b><br>Estado: <b>%{customdata[4]}</b><extra></extra>")
+        aplicar_estilo_figura(fig_long, scatter_xy=True)
         st.plotly_chart(fig_long, use_container_width=True)
 
     # 6. Variabilidad de diámetro de pozos
@@ -311,6 +336,7 @@ if archivo is not None:
             labels={"este": "Este (X)", "norte": "Norte (Y)", "diametro": "Diámetro (mm)"}
         )
         fig_diam.update_traces(hovertemplate="Pozo: <b>%{customdata[0]}</b><br>Diámetro: <b>%{customdata[1]} mm</b><extra></extra>")
+        aplicar_estilo_figura(fig_diam, scatter_xy=True)
         st.plotly_chart(fig_diam, use_container_width=True)
 
     # 7. Carga total y específica en zonas críticas
@@ -346,6 +372,7 @@ if archivo is not None:
                 labels={"este": "Este (X)", "norte": "Norte (Y)", col_zona: col_zona, "kilos_cargados_real": "Kg Explosivo"}
             )
             fig_zona.update_traces(hovertemplate=f"Zona: <b>%{{customdata[0]}}</b><br>Kg explosivo: <b>%{{customdata[1]}}</b><extra></extra>")
+            aplicar_estilo_figura(fig_zona, scatter_xy=True)
             st.plotly_chart(fig_zona, use_container_width=True)
         else:
             st.info("No se encontró columna de zona crítica (polígono, banco o zona) para análisis específico.")
@@ -383,12 +410,14 @@ if archivo is not None:
         if "factor_carga" in df_procesado.columns:
             st.markdown("**Distribución del Factor de Carga (kg/m):**")
             fig_hist = px.histogram(df_procesado, x="factor_carga", nbins=20, title="Histograma de Factor de Carga", labels={"factor_carga": "Factor de Carga (kg/m)"})
+            aplicar_estilo_figura(fig_hist)
             st.plotly_chart(fig_hist, use_container_width=True)
 
         # Boxplot de kilos de explosivo por cota
         if "kilos_cargados_real" in df_procesado.columns and "cota" in df_procesado.columns:
             st.markdown("**Boxplot de Kilos de Explosivo por Cota:**")
             fig_box = px.box(df_procesado, x="cota", y="kilos_cargados_real", points="all", title="Boxplot de Kilos de Explosivo por Cota", labels={"cota": "Cota (msnm)", "kilos_cargados_real": "Kg Explosivo"})
+            aplicar_estilo_figura(fig_box)
             st.plotly_chart(fig_box, use_container_width=True)
         else:
             st.info("No se puede mostrar el boxplot: faltan las columnas 'cota' y/o 'kilos_cargados_real' en los datos.")
@@ -401,6 +430,7 @@ if archivo is not None:
             pie_counts = df_procesado[col_pie].value_counts().reset_index()
             pie_counts.columns = [col_pie, "Cantidad"]
             fig_pie = px.pie(pie_counts, names=col_pie, values="Cantidad", title=f"Distribución por {col_pie}", hole=0.3)
+            aplicar_estilo_figura(fig_pie)
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
             st.info("No hay columnas categóricas adecuadas para graficar en torta (pie chart). Asegúrate de tener columnas tipo categoría con pocos valores únicos.")
@@ -422,6 +452,7 @@ if archivo is not None:
                 labels={"este": "Este (X)", "norte": "Norte (Y)", col_scatter: col_scatter},
                 color_discrete_sequence=px.colors.qualitative.Set1
             )
+            aplicar_estilo_figura(fig_scatter_polygon, scatter_xy=True)
             st.plotly_chart(fig_scatter_polygon, use_container_width=True)
         else:
             st.info("No hay columnas categóricas adecuadas para colorear el scatterplot.")
@@ -443,6 +474,7 @@ if archivo is not None:
                 labels={"este": "Este (UTM)", "norte": "Norte (UTM)", "cota": "Cota (msnm)", "factor_carga": "Factor de carga (kg/m)", "kilos_cargados_real": "Kg explosivo"}
             )
             fig_3d.update_traces(marker=dict(size=5))
+            aplicar_estilo_figura(fig_3d, is_3d=True)
             st.plotly_chart(fig_3d, use_container_width=True)
         else:
             st.info("No se puede mostrar el gráfico 3D: faltan las columnas 'este', 'norte' y/o 'cota' en los datos.")
@@ -471,6 +503,7 @@ if archivo is not None:
             labels={"este": "Este (UTM)", "norte": "Norte (UTM)", "cota": "Cota (msnm)", "factor_carga": "Factor de carga (kg/m)", "kilos_cargados_real": "Kg explosivo"}
         )
         fig_3d.update_traces(hovertemplate=hovertemplate_3d, marker=dict(size=5))
+        aplicar_estilo_figura(fig_3d, is_3d=True)
         st.plotly_chart(fig_3d, use_container_width=True)
     else:
         st.info("No se puede mostrar el gráfico 3D: faltan las columnas 'este', 'norte' y/o 'cota' en los datos.")
