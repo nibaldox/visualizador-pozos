@@ -7,8 +7,10 @@ Esta aplicación permite visualizar y analizar datos de pozos de tronadura en mi
 - **Carga flexible de datos** desde archivos Excel, con normalización automática de nombres de columnas.
 - **Visualización en pestañas**: Dashboard, mapa de calor, scatter categórico y gráfico 3D.
 - **Filtros avanzados**: Multiselección, filtro por fecha y limpieza de filtros irrelevantes.
+- **Carga inicial optimizada**: Al cargar nuevos datos la aplicación muestra, por defecto, solo los últimos 30 días para acelerar el renderizado sin perder contexto.
 - **Mapa de calor**: Representa kilos de explosivo o factor de carga, con escalas de color verde-rojo.
 - **Hover personalizado**: Nombres cortos y datos en negrita, con máximo 2 decimales en todos los valores numéricos.
+- **Estética consistente**: Todos los gráficos de Plotly usan fondos transparentes y los dispersogramas de coordenadas mantienen relación 1:1 sin líneas de cuadrícula para mejorar la lectura.
 - **Visualización 3D**: Pozos en UTM y cota, con color por variable seleccionable.
 - **Código limpio y modular**: Funciones auxiliares reutilizables para hover y redondeo.
 
