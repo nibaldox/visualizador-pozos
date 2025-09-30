@@ -66,8 +66,8 @@ def cargar_datos(ruta_archivo: Any) -> pd.DataFrame:
     # Mapeo robusto de nombres de columnas a estándar interno
     column_mapping = {
         'nombre_banco': 'cota',
-        'latitud_geo': 'norte',
-        'longitud_geo': 'este',
+        'latitud_geo': 'este',
+        'longitud_geo': 'norte',
         'longitud_real': 'longitud_real',
         'kilos_cargados_real': 'kilos_cargados_real',
         'nombre_real_profundidad': 'profundidad',

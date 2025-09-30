@@ -8,7 +8,7 @@ El commit actual reemplaza el `main.py` monolítico por una versión mínima que
 Si la rama principal incorporó mejoras recientes en el antiguo `main.py` (métricas, gráficos o filtros), Git las verá como ediciones sobre las mismas líneas que aquí fueron eliminadas, generando un conflicto directo.
 
 ## 2. Cambios en el normalizado de columnas
-`src/data_loader.py` ahora fuerza el mapeo `latitud_geo -> norte` y `longitud_geo -> este`, además de normalizar nombres antes del mapeo.【F:src/data_loader.py†L42-L87】 Si el archivo en la rama base tiene otra lógica para las mismas columnas, GitHub marcará conflicto en ese archivo.
+`src/data_loader.py` ahora normaliza los nombres antes del mapeo y corrige la orientación UTM con `latitud_geo -> este` y `longitud_geo -> norte`.【F:src/data_loader.py†L42-L87】 Si el archivo en la rama base tiene otra lógica para las mismas columnas, GitHub marcará conflicto en ese archivo.
 
 ## 3. Nueva estructura de páginas y utilidades
 Se añadieron módulos `src/ui/data_context.py` y `src/ui/plots.py`, junto con las subpáginas en `src/pages/`. Estos archivos no existen en la rama base y dependen del nuevo `main.py`. Cualquier ajuste hecho en la base sobre la antigua lógica (por ejemplo, gráficos directamente en `main.py`) no tendrá equivalencia aquí, lo que obliga a resolver manualmente qué enfoque conservar.
